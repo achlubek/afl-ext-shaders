@@ -1,0 +1,53 @@
+#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(local_size_x = 128, local_size_y = 2, local_size_z = 1) in;
+
+#include sphereRaytracing.glsl
+#include celestialDataStructs.glsl
+#include celestialComputeSet.glsl
+#include polar.glsl
+#include proceduralValueNoise.glsl
+#include wavesNoise.glsl
+
+#include hsv.glsl
+#include terrainGenerator.glsl
+
+#include celestialDataNoAtmosphere.glsl
+#include celestialDataLightAtmosphere.glsl
+#include celestialDataThickAtmosphere.glsl
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    vec2 resolution = celestialBuffer.time_dataresolution.yz;
+    if(pixel.x > resolution.x || pixel.y > resolution.y) return;
+    vec2 UV = vec2(pixel) / vec2(resolution);
+    vec3 dir = polarToXyz(UV);
+
+    RenderedCelestialBody body = getRenderedBody(celestialBuffer.celestialBody);
+
+    float heightMap = 0.0;
+    vec4 colorRoughnessMap = vec4(0.0);
+    vec2 cloudsMap = vec2(0.0);
+
+    if(body.renderMethod == CELESTIAL_RENDER_METHOD_NO_ATMOSPHERE){
+        heightMap = celestialNoAtmosphereGetHeightMap(body, dir);
+        colorRoughnessMap = celestialNoAtmosphereGetColorRoughnessMap(body, heightMap, dir);
+        cloudsMap = celestialNoAtmosphereGetCloudsMap(body, heightMap, dir);
+    }
+    if(body.renderMethod == CELESTIAL_RENDER_METHOD_LIGHT_ATMOSPHERE){
+        heightMap = celestialLightAtmosphereGetHeightMap(body, dir);
+        colorRoughnessMap = celestialLightAtmosphereGetColorRoughnessMap(body, heightMap, dir);
+        cloudsMap = celestialLightAtmosphereGetCloudsMap(body, heightMap, dir);
+    }
+    if(body.renderMethod == CELESTIAL_RENDER_METHOD_THICK_ATMOSPHERE){
+        heightMap = celestialThickAtmosphereGetHeightMap(body, dir);
+        colorRoughnessMap = celestialThickAtmosphereGetColorRoughnessMap(body, heightMap, dir);
+        cloudsMap = celestialThickAtmosphereGetCloudsMap(body, heightMap, dir);
+    }
+
+    imageStore(heightMapImage, pixel, vec4(heightMap, 0.0, 0.0, 0.0));
+    imageStore(baseColorImage, pixel, colorRoughnessMap);
+    imageStore(cloudsImage, pixel, vec4(cloudsMap.x, cloudsMap.y, 0.0, 0.0));
+}
